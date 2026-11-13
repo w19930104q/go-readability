@@ -13,6 +13,7 @@ This package is based from [Readability.js] by [Mozilla] and written line by lin
 - [Status](#status)
 - [Installation](#installation)
 - [Example](#example)
+- [Revision Views](#revision-views)
 - [Command Line Usage](#command-line-usage)
 - [Licenses](#licenses)
 
@@ -140,6 +141,42 @@ func main() {
 
 ```
 
+## Revision Views
+
+Errata pages often carry editorial revision marks (`<ins>` and `<del>`). By
+default go-readability keeps those marks untouched, preserving the historical
+behaviour. A `Parser` can instead extract a single, consistent variant by
+setting its `RevisionView` field:
+
+- `readability.RevisionViewCurrent` (the revised text): every `<del>` subtree
+  is removed and every `<ins>` element is unwrapped so its children take its
+  place.
+- `readability.RevisionViewOriginal` (the text before revision): every `<ins>`
+  subtree is removed and every `<del>` element is unwrapped.
+- `readability.RevisionViewNone` (the zero value, default): revision marks are
+  left as-is.
+
+The transform runs on an internal copy before readability scoring, cleaning
+and retries, so `Check`, candidate scoring, the retry ladder, `Content`,
+`TextContent`, `Length` and body-derived title/byline/excerpt all follow the
+selected view. Explicit metadata in the document `<head>` is never modified,
+and the DOM you pass to the parser is never mutated. Marks of the opposite
+kind nested inside a removed ancestor cannot reappear: the whole rejected
+subtree is discarded first.
+
+```go
+parser := readability.NewParser()
+parser.RevisionView = readability.RevisionViewCurrent // or RevisionViewOriginal
+
+article, err := parser.Parse(input, pageURL)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+Use `readability.ParseRevisionView("current")` (accepts `"current"`,
+`"original"`, `"none"` and `""`) when resolving the view from a string.
+
 ## Command Line Usage
 
 You can also use `go-readability` as command line app. To do that, first install the CLI :
@@ -160,11 +197,15 @@ Usage:
   go-readability [flags] source
 
 Flags:
-  -h, --help          help for go-readability
-  -l, --http string   start the http server at the specified address
-  -m, --metadata      only print the page's metadata
-  -t, --text          only print the page's text
+  -h, --help                    help for go-readability
+  -l, --http string             start the http server at the specified address
+  -m, --metadata                only print the page's metadata
+  -r, --revision-view string    revision view for pages with <ins>/<del> marks: "current" (drop del, unwrap ins) or "original" (drop ins, unwrap del); default keeps revision marks
+  -t, --text                    only print the page's text
 ```
+
+The same option is available as the `revision-view` query parameter of the
+built-in HTTP server.
 
 ## Licenses
 

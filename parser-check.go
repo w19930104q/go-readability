@@ -23,8 +23,21 @@ func (ps *Parser) Check(input io.Reader) bool {
 
 // CheckDocument checks whether the document is readable without parsing the whole thing.
 func (ps *Parser) CheckDocument(doc *html.Node) bool {
+	// Resolve revision marks according to the selected view so the
+	// readability check scores the same variant that Parse would extract.
+	// A rejected revision may carry most of the text, so running the
+	// check on the unfiltered tree could let a view that ends up empty
+	// pass the readability gate. The document is only cloned when a view
+	// is active, keeping the default behaviour allocation-free, and the
+	// caller's DOM is never modified.
+	workingDoc := doc
+	if ps.RevisionView == RevisionViewCurrent || ps.RevisionView == RevisionViewOriginal {
+		workingDoc = dom.Clone(doc, true)
+		applyRevisionView(workingDoc, ps.RevisionView)
+	}
+
 	// Get <p> and <pre> nodes.
-	nodes := dom.QuerySelectorAll(doc, "p, pre, article")
+	nodes := dom.QuerySelectorAll(workingDoc, "p, pre, article")
 
 	// Also get <div> nodes which have <br> node(s) and append
 	// them into the `nodes` variable.
@@ -39,7 +52,7 @@ func (ps *Parser) CheckDocument(doc *html.Node) bool {
 	// So we need to make sure only fetch the div once.
 	// To do so, we will use map as dictionary.
 	tracker := make(map[*html.Node]struct{})
-	for _, br := range dom.QuerySelectorAll(doc, "div > br") {
+	for _, br := range dom.QuerySelectorAll(workingDoc, "div > br") {
 		if br.Parent == nil {
 			continue
 		}

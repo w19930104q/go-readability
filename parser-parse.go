@@ -41,6 +41,12 @@ func (ps *Parser) ParseDocument(doc *html.Node, pageURL *nurl.URL) (Article, err
 		cleanConditionally: true,
 	}
 
+	// Resolve editorial revision marks (<ins>/<del>) according to the
+	// selected view before any scoring, cleaning or retry happens, so
+	// every stage of the extraction works on the same variant. This runs
+	// on the cloned document so the caller's DOM stays untouched.
+	applyRevisionView(ps.doc, ps.RevisionView)
+
 	// Avoid parsing too large documents, as per configuration option
 	if ps.MaxElemsToParse > 0 {
 		numTags := len(dom.GetElementsByTagName(ps.doc, "*"))

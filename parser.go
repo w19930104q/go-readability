@@ -118,6 +118,11 @@ type Parser struct {
 	// AllowedVideoRegex is a regular expression that matches video URLs that should be
 	// allowed to be included in the article content. If undefined, it will use default filter.
 	AllowedVideoRegex *regexp.Regexp
+	// RevisionView selects which variant of documents containing
+	// editorial revision marks (<ins>/<del>) is extracted. The zero value
+	// (RevisionViewNone) keeps the historical behaviour and leaves revision
+	// marks untouched. See RevisionViewCurrent and RevisionViewOriginal.
+	RevisionView RevisionView
 
 	doc             *html.Node
 	documentURI     *nurl.URL

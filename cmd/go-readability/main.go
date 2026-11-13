@@ -29,6 +29,11 @@ const index = `<!DOCTYPE HTML>
    <p><label for="url">URL </label><input type="url" name="url" style="width:90%"></p>
    <p><input type="checkbox" name="text" value="true">text only</p>
    <p><input type="checkbox" name="metadata" value="true">only get the page's metadata</p>
+   <p><label for="revision-view">revision view </label><select name="revision-view">
+    <option value="">keep revision marks (default)</option>
+    <option value="current">current</option>
+    <option value="original">original</option>
+   </select></p>
   </fieldset>
   <p><input type="submit"></p>
  </form>
@@ -47,6 +52,7 @@ func main() {
 	rootCmd.Flags().StringP("http", "l", "", "start the http server at the specified address")
 	rootCmd.Flags().BoolP("metadata", "m", false, "only print the page's metadata")
 	rootCmd.Flags().BoolP("text", "t", false, "only print the page's text")
+	rootCmd.Flags().StringP("revision-view", "r", "", "revision view for pages with <ins>/<del> marks: \"current\" (drop del, unwrap ins) or \"original\" (drop ins, unwrap del); default keeps revision marks")
 
 	err := rootCmd.Execute()
 	if err != nil {
@@ -66,8 +72,14 @@ func rootCmdHandler(cmd *cobra.Command, args []string) {
 	// Get cmd parameter
 	metadataOnly, _ := cmd.Flags().GetBool("metadata")
 	textOnly, _ := cmd.Flags().GetBool("text")
+	revisionViewName, _ := cmd.Flags().GetString("revision-view")
+	revisionView, err := readability.ParseRevisionView(revisionViewName)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
 	if len(args) > 0 {
-		content, err := getContent(args[0], metadataOnly, textOnly)
+		content, err := getContent(args[0], metadataOnly, textOnly, revisionView)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -81,6 +93,11 @@ func rootCmdHandler(cmd *cobra.Command, args []string) {
 func httpHandler(w http.ResponseWriter, r *http.Request) {
 	metadataOnly, _ := strconv.ParseBool(r.URL.Query().Get("metadata"))
 	textOnly, _ := strconv.ParseBool(r.URL.Query().Get("text"))
+	revisionView, err := readability.ParseRevisionView(r.URL.Query().Get("revision-view"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	url := r.URL.Query().Get("url")
 	if url == "" {
 		if _, err := w.Write([]byte(index)); err != nil {
@@ -90,7 +107,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		log.Println("process URL", url)
-		content, err := getContent(url, metadataOnly, textOnly)
+		content, err := getContent(url, metadataOnly, textOnly, revisionView)
 		if err != nil {
 			log.Println(err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -109,7 +126,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getContent(srcPath string, metadataOnly, textOnly bool) (string, error) {
+func getContent(srcPath string, metadataOnly, textOnly bool, revisionView readability.RevisionView) (string, error) {
 	// Open or fetch web page that will be parsed
 	var (
 		pageURL   *nurl.URL
@@ -141,12 +158,14 @@ func getContent(srcPath string, metadataOnly, textOnly bool) (string, error) {
 	tee := io.TeeReader(srcReader, buf)
 
 	// Make sure the page is readable
-	if !readability.Check(tee) {
+	parser := readability.NewParser()
+	parser.RevisionView = revisionView
+	if !parser.Check(tee) {
 		return "", fmt.Errorf("failed to parse page: the page is not readable")
 	}
 
 	// Get readable content from the reader
-	article, err := readability.FromReader(buf, pageURL)
+	article, err := parser.Parse(buf, pageURL)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse page: %v", err)
 	}
